@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QClipboard>
 #include <QImage>
 #include <QKeyEvent>
 #include <QLabel>
@@ -82,10 +83,15 @@ class PinImageViewer : public QWidget {
         }
     }
 
-    // Press Esc or Q to trigger close()
+    // Press Esc/Q to close, C to copy image to clipboard
     void keyPressEvent(QKeyEvent* event) override {
         if (event->key() == Qt::Key_Escape || event->key() == Qt::Key_Q) {
             this->close();
+        } else if (event->key() == Qt::Key_C) {
+            QClipboard* clipboard = QApplication::clipboard();
+            clipboard->setPixmap(originalPixmap);
+        } else {
+            QWidget::keyPressEvent(event);
         }
     }
 
