@@ -23,6 +23,8 @@ class PinImageViewer : public QWidget {
 
         originalPixmap = QPixmap::fromImage(image);
 
+        QApplication::clipboard()->setPixmap(originalPixmap);
+
         label = new QLabel(this);
         label->setScaledContents(true);
         label->setMinimumSize(1, 1);
