@@ -14,16 +14,13 @@
 #include <vector>
 
 class PinImageViewer : public QWidget {
-   public:
+public:
     PinImageViewer(const QImage& image) {
-        // Set frameless + stay on top + tool window
+        // Set frameless, stay on top, and tool window flags
         setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
-
         setAttribute(Qt::WA_TranslucentBackground);
 
         originalPixmap = QPixmap::fromImage(image);
-
-        QApplication::clipboard()->setPixmap(originalPixmap);
 
         label = new QLabel(this);
         label->setScaledContents(true);
@@ -39,24 +36,22 @@ class PinImageViewer : public QWidget {
     }
 
     void prepareWaylandWindow() {
-        create();  // Create native window handle
+        create(); // Create native window handle
 
         QWindow* win = windowHandle();
-
         if (win) {
             win->setProperty("_q_wayland_layer_shell_layer", "overlay");
             win->setProperty("_q_wayland_layer_shell_keyboard_interactivity", 0);
         }
     }
 
-   protected:
+protected:
     void closeEvent(QCloseEvent* event) override {
         QWidget::closeEvent(event);
-
-        QCoreApplication::quit();  // Force terminate app.exec()
+        QCoreApplication::quit(); // Force terminate app.exec()
     }
 
-    // Double left-click -> Restore original size
+    // Double left-click to restore original size
     void mouseDoubleClickEvent(QMouseEvent* event) override {
         if (event->button() == Qt::LeftButton) {
             resize(originalPixmap.size());
@@ -74,12 +69,10 @@ class PinImageViewer : public QWidget {
         }
     }
 
-    // Mouse wheel zoom
+    // Mouse wheel to zoom in/out
     void wheelEvent(QWheelEvent* event) override {
         float factor = (event->angleDelta().y() > 0) ? 1.1f : 0.9f;
-
         QSize newSize = size() * factor;
-
         if (newSize.width() >= 10 && newSize.height() >= 10) {
             resize(newSize);
         }
@@ -97,23 +90,19 @@ class PinImageViewer : public QWidget {
         }
     }
 
-   private:
+private:
     QLabel* label;
-
     QPixmap originalPixmap;
 };
 
 int main(int argc, char* argv[]) {
-    // Completely disable Wayland input method module to prevent zwp_text_input deadlock in GNOME
+    // Completely disable Wayland input method module to prevent zwp_text_input deadlocks
     qputenv("QT_IM_MODULE", "none");
 
     std::ios_base::sync_with_stdio(false);
 
-    QApplication app(argc, argv);
-
-    // Read data from standard input
+    // Read image data from standard input
     std::vector<uchar> buffer;
-
     char chunk[4096];
 
     while (std::cin.read(chunk, sizeof(chunk))) {
@@ -129,22 +118,28 @@ int main(int argc, char* argv[]) {
 
     if (buffer.empty()) {
         std::cerr << "Error: No image data read from standard input!" << std::endl;
-
         return -1;
     }
 
-    QImage image;
+    // Bypass Wayland clipboard input-serial restriction on unfocused windows by using wl-copy directly
+    FILE* clipPipe = popen("wl-copy -t image/png", "w");
+    if (clipPipe) {
+        fwrite(buffer.data(), 1, buffer.size(), clipPipe);
+        pclose(clipPipe);
+    } else {
+        std::cerr << "Warning: Failed to execute wl-copy for automatic clipboard population." << std::endl;
+    }
 
+    QApplication app(argc, argv);
+
+    QImage image;
     if (!image.loadFromData(buffer.data(), static_cast<int>(buffer.size()))) {
         std::cerr << "Error: Failed to parse image data!" << std::endl;
-
         return -1;
     }
 
     PinImageViewer viewer(image);
-
     viewer.prepareWaylandWindow();
-
     viewer.show();
 
     return app.exec();
