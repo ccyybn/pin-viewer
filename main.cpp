@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <iostream>
 #include <vector>
+#include <unistd.h> // for fork() and setsid()
 
 class PinImageViewer : public QWidget {
 public:
@@ -121,6 +122,35 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    // Parse custom arguments (e.g., --detach or -d) and clean argv for QApplication
+    bool detach = false;
+    std::vector<char*> app_args;
+    if (argc > 0) app_args.push_back(argv[0]);
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--detach" || arg == "-d") {
+            detach = true;
+        } else {
+            app_args.push_back(argv[i]);
+        }
+    }
+
+    // If detach is requested, fork background process and exit parent immediately
+    if (detach) {
+        pid_t pid = fork();
+        if (pid < 0) {
+            std::cerr << "Error: Fork failed!" << std::endl;
+            return -1;
+        }
+        if (pid > 0) {
+            // Parent process exits immediately, unblocking the pipeline/command
+            return 0;
+        }
+        // Child process: create new session to detach from terminal/parent
+        setsid();
+    }
+
     // Bypass Wayland clipboard input-serial restriction on unfocused windows by using wl-copy directly
     FILE* clipPipe = popen("wl-copy -t image/png", "w");
     if (clipPipe) {
@@ -130,7 +160,8 @@ int main(int argc, char* argv[]) {
         std::cerr << "Warning: Failed to execute wl-copy for automatic clipboard population." << std::endl;
     }
 
-    QApplication app(argc, argv);
+    int app_argc = static_cast<int>(app_args.size());
+    QApplication app(app_argc, app_args.data());
 
     QImage image;
     if (!image.loadFromData(buffer.data(), static_cast<int>(buffer.size()))) {
