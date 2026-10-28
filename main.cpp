@@ -9,6 +9,7 @@
 #include <QWheelEvent>
 #include <QWidget>
 #include <QWindow>
+#include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <vector>
@@ -52,37 +53,56 @@ protected:
         QCoreApplication::quit(); // Force terminate app.exec()
     }
 
-    // Double left-click to restore original size
+    // Double left-click to close window
     void mouseDoubleClickEvent(QMouseEvent* event) override {
         if (event->button() == Qt::LeftButton) {
-            resize(originalPixmap.size());
+            this->close();
         } else {
             QWidget::mouseDoubleClickEvent(event);
         }
     }
 
-    // Left mouse button drag to move window
+    // Left mouse button drag to move window, Middle mouse button to reset to 100%
     void mousePressEvent(QMouseEvent* event) override {
         if (event->button() == Qt::LeftButton) {
             if (this->windowHandle()) {
                 this->windowHandle()->startSystemMove();
             }
+        } else if (event->button() == Qt::MiddleButton) {
+            zoomStep = 0;
+            resize(originalPixmap.size());
+        } else {
+            QWidget::mousePressEvent(event);
         }
     }
 
-    // Mouse wheel to zoom in/out
+    // Mouse wheel zoom using integer step increments for precise 100% alignment
     void wheelEvent(QWheelEvent* event) override {
-        float factor = (event->angleDelta().y() > 0) ? 1.1f : 0.9f;
-        QSize newSize = size() * factor;
-        if (newSize.width() >= 10 && newSize.height() >= 10) {
+        if (event->angleDelta().y() == 0) return;
+
+        // Increment or decrement zoom step by integer 1
+        int stepDelta = (event->angleDelta().y() > 0) ? 1 : -1;
+        int newStep = zoomStep + stepDelta;
+
+        // Calculate proportional scale based on integer step (1.1^step)
+        // When zoomStep == 0, scale is exactly 1.0 (100% original size)
+        float scale = std::pow(1.1f, newStep);
+        QSize newSize = originalPixmap.size() * scale;
+
+        // Apply size if within reasonable display limits (-30 to +50 steps)
+        if (newSize.width() >= 10 && newSize.height() >= 10 && newStep >= -30 && newStep <= 50) {
+            zoomStep = newStep;
             resize(newSize);
         }
     }
 
-    // Press Esc/Q to close, C to copy image to clipboard
+    // Press Esc/Q to close, Home to reset size, C to copy image to clipboard
     void keyPressEvent(QKeyEvent* event) override {
         if (event->key() == Qt::Key_Escape || event->key() == Qt::Key_Q) {
             this->close();
+        } else if (event->key() == Qt::Key_Home) {
+            zoomStep = 0;
+            resize(originalPixmap.size());
         } else if (event->key() == Qt::Key_C) {
             QClipboard* clipboard = QApplication::clipboard();
             clipboard->setPixmap(originalPixmap);
@@ -94,6 +114,7 @@ protected:
 private:
     QLabel* label;
     QPixmap originalPixmap;
+    int zoomStep = 0; // Integer zoom level index (0 = exactly 100% original size)
 };
 
 int main(int argc, char* argv[]) {
